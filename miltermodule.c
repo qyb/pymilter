@@ -346,7 +346,7 @@ static struct MilterCallback {
       { NULL , NULL }
     };
 
-staticforward struct smfiDesc description; /* forward declaration */
+static struct smfiDesc description; /* forward declaration */
 
 static PyObject *MilterError;
 /* The interpreter instance that called milter.main */
@@ -358,7 +358,7 @@ typedef struct {
 
 static milter_Diag diag;
 
-staticforward PyTypeObject milter_ContextType;
+static PyTypeObject milter_ContextType;
 
 typedef struct {
   PyObject_HEAD
@@ -703,7 +703,7 @@ _generic_wrapper(milter_ContextObject *self, PyObject *cb, PyObject *arglist) {
   result = PyEval_CallObject(cb, arglist);
   Py_DECREF(arglist);
   if (result == NULL) return _report_exception(self);
-  if (!PyInt_Check(result)) {
+  if (!PyLong_Check(result)) {
     const struct MilterCallback *p;
     const char *cbname = "milter";
     char buf[40];
@@ -718,7 +718,7 @@ _generic_wrapper(milter_ContextObject *self, PyObject *cb, PyObject *arglist) {
     PyErr_SetString(MilterError,buf);
     return _report_exception(self);
   }
-  retval = PyInt_AS_LONG(result);
+  retval = PyLong_AS_LONG(result);
   Py_DECREF(result);
   _release_thread(self->t);
   return retval;
@@ -735,7 +735,7 @@ makeipaddr(struct sockaddr_in *addr) {
 	sprintf(buf, "%d.%d.%d.%d",
 		(int) (x>>24) & 0xff, (int) (x>>16) & 0xff,
 		(int) (x>> 8) & 0xff, (int) (x>> 0) & 0xff);
-	return PyString_FromString(buf);
+	return PyUnicode_FromString(buf);
 }
 
 #ifdef HAVE_IPV6_SUPPORT
@@ -743,8 +743,8 @@ static PyObject *
 makeip6addr(struct sockaddr_in6 *addr) {
 	char buf[100]; /* must be at least INET6_ADDRSTRLEN + 1 */
 	const char *s = inet_ntop(AF_INET6, &addr->sin6_addr, buf, sizeof buf);
-	if (s) return PyString_FromString(s);
-	return PyString_FromString("inet6:unknown");
+	if (s) return PyUnicode_FromString(s);
+	return PyUnicode_FromString("inet6:unknown");
 }
 #endif
 
@@ -835,7 +835,7 @@ generic_env_wrapper(SMFICTX *ctx, PyObject*cb, char **argv) {
    for (i=0;i<count;i++) {
      /* There's some error checking performed in do_mkvalue() for a string */
      /* that's not currently done here - it probably should be */
-     PyObject *o = PyString_FromStringAndSize(argv[i], strlen(argv[i]));
+     PyObject *o = PyUnicode_FromStringAndSize(argv[i], strlen(argv[i]));
      if (o == NULL) {	/* out of memory */
        Py_DECREF(arglist);
        return _report_exception(self);
@@ -966,7 +966,7 @@ milter_wrap_negotiate(SMFICTX *ctx,
     int i;
     for (i = 0; i < 4; ++i) {
       *pa[i] = (i <= len)
-      	? PyInt_AsUnsignedLongMask(PyList_GET_ITEM(optlist,i))
+      	? PyLong_AsUnsignedLongMask(PyList_GET_ITEM(optlist,i))
 	: fa[i];
     }
     if (PyErr_Occurred()) {
@@ -1554,10 +1554,12 @@ static PyMethodDef context_methods[] = {
   { NULL, NULL }
 };
 
+/*
 static PyObject *
 milter_Context_getattr(PyObject *self, char *name) {
   return Py_FindMethod(context_methods, self, name);
 }
+*/
 
 static struct smfiDesc description = {  /* Set some reasonable defaults */
   "pythonfilter",
@@ -1607,14 +1609,13 @@ static PyMethodDef milter_methods[] = {
 };
 
 static PyTypeObject milter_ContextType = {
-  PyObject_HEAD_INIT(&PyType_Type)
-  0,
-  "milterContext",
+  PyVarObject_HEAD_INIT(NULL, 0)
+  "milter.milterContext",
   sizeof(milter_ContextObject),
   0,
         milter_Context_dealloc,            /* tp_dealloc */
         0,               /* tp_print */
-        milter_Context_getattr,           /* tp_getattr */
+        0,           /* tp_getattr */
         0,			/* tp_setattr */
         0,                                      /* tp_compare */
         0,                 /* tp_repr */
@@ -1637,17 +1638,28 @@ Libmilter is currently marked FFR, and needs to be explicitly installed.\n\
 See <sendmailsource>/libmilter/README for details on setting it up.\n";
 
 static void setitem(PyObject *d,const char *name,long val) {
-  PyObject *v = PyInt_FromLong(val);
+  PyObject *v = PyLong_FromLong(val);
   PyDict_SetItemString(d,name,v);
   Py_DECREF(v);
 }
 
-void
-initmilter(void) {
+static struct PyModuleDef moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "milter",
+    NULL,
+    -1,
+    milter_methods,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
+
+PyMODINIT_FUNC
+PyInit_milter(void) {
    PyObject *m, *d;
 
-   m = Py_InitModule4("milter", milter_methods, milter_documentation,
-		      (PyObject*)NULL, PYTHON_API_VERSION);
+   m = PyModule_Create(&moduledef);
    d = PyModule_GetDict(m);
    MilterError = PyErr_NewException("milter.error", NULL, NULL);
    PyDict_SetItemString(d,"error", MilterError);
@@ -1713,4 +1725,5 @@ initmilter(void) {
    setitem(d,"DISCARD",  SMFIS_DISCARD);
    setitem(d,"ACCEPT",  SMFIS_ACCEPT);
    setitem(d,"TEMPFAIL",  SMFIS_TEMPFAIL);
+   return m;
 }
